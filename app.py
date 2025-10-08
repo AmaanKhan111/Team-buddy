@@ -28,8 +28,9 @@ if uploaded_file:
             st.json(ratios)
 
             score = generate_health_score(ratios)
-            st.metric("🏆 Financial Health Score", f"{score} / 100")
 
+            st.metric("🏆 Financial Health Score", f"{score} / 100")
+print("I have added some lines of code to this files")
             st.subheader("📈 Ratio Visualization")
             st.pyplot(plot_ratios(ratios))
 else:
