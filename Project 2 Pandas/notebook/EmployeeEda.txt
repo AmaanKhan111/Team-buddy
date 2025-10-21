@@ -1,0 +1,9 @@
+This file give the joining date of the employees from 2013-2018.
+Unique Employees = 2764
+Mean age = 30.95
+Mean Experience in current domain = 2.64
+Employees with EICD > 3 = 912
+Employees with EICD > 2 = 1363
+Max. mean Payment tier (Banglore) = 2.777114
+Max. Mean PaymentTier(PHD) = 2.698718
+No. of Employees 
