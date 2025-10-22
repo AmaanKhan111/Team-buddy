@@ -1,0 +1,481 @@
+# Financial Health Management System - Complete Setup Guide
+
+## 📋 Table of Contents
+1. [Prerequisites](#prerequisites)
+2. [Project Structure](#project-structure)
+3. [Backend Setup](#backend-setup)
+4. [Database Setup](#database-setup)
+5. [Frontend Setup](#frontend-setup)
+6. [Running the Application](#running-the-application)
+7. [API Documentation](#api-documentation)
+8. [Testing](#testing)
+
+---
+
+## 🔧 Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+- **Node.js** (v16 or higher) - [Download](https://nodejs.org/)
+- **MongoDB** (v5 or higher) - [Download](https://www.mongodb.com/try/download/community)
+  - OR use MongoDB Atlas (Cloud) - [Sign up](https://www.mongodb.com/cloud/atlas)
+- **npm** or **yarn** package manager
+- **Git** (optional, for version control)
+
+---
+
+## 📁 Project Structure
+
+```
+finhealth-project/
+├── backend/
+│   ├── server.js              # Main Express server
+│   ├── package.json           # Backend dependencies
+│   ├── .env                   # Environment variables (create this)
+│   └── .env.example          # Example environment file
+├── frontend/
+│   ├── src/
+│   │   ├── App.js            # React application (from artifact)
+│   │   ├── index.js          # Entry point
+│   │   └── index.css         # Styles
+│   ├── public/
+│   │   └── index.html        # HTML template
+│   └── package.json          # Frontend dependencies
+└── README.md                 # This file
+```
+
+---
+
+## 🚀 Backend Setup
+
+### Step 1: Create Backend Directory
+
+```bash
+mkdir finhealth-project
+cd finhealth-project
+mkdir backend
+cd backend
+```
+
+### Step 2: Initialize Node.js Project
+
+```bash
+npm init -y
+```
+
+### Step 3: Install Dependencies
+
+```bash
+npm install express mongoose cors bcryptjs jsonwebtoken dotenv express-validator
+npm install --save-dev nodemon
+```
+
+### Step 4: Create server.js
+
+Copy the complete backend code from the "Backend API Server" artifact into `server.js`
+
+### Step 5: Create Environment File
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and add your configuration:
+
+```env
+PORT=5000
+NODE_ENV=development
+MONGODB_URI=mongodb://localhost:27017/finhealth
+JWT_SECRET=your-super-secret-key-change-this
+CORS_ORIGIN=http://localhost:3000
+```
+
+**Important:** Generate a strong JWT secret:
+```bash
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+```
+
+### Step 6: Update package.json Scripts
+
+```json
+{
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  }
+}
+```
+
+---
+
+## 🗄️ Database Setup
+
+### Option 1: Local MongoDB
+
+#### Install MongoDB
+
+**macOS (using Homebrew):**
+```bash
+brew tap mongodb/brew
+brew install mongodb-community
+brew services start mongodb-community
+```
+
+**Windows:**
+Download and install from [MongoDB Download Center](https://www.mongodb.com/try/download/community)
+
+**Linux (Ubuntu):**
+```bash
+wget -qO - https://www.mongodb.org/static/pgp/server-6.0.asc | sudo apt-key add -
+echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/6.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-6.0.list
+sudo apt-get update
+sudo apt-get install -y mongodb-org
+sudo systemctl start mongod
+```
+
+#### Verify MongoDB is Running
+
+```bash
+mongosh
+# You should see the MongoDB shell prompt
+```
+
+#### Create Database and Indexes (Optional)
+
+```bash
+mongosh
+```
+
+```javascript
+use finhealth
+
+// Create indexes for better performance
+db.users.createIndex({ email: 1 }, { unique: true })
+db.expenses.createIndex({ userId: 1, date: -1 })
+db.income.createIndex({ userId: 1, date: -1 })
+db.budgets.createIndex({ userId: 1, category: 1 }, { unique: true })
+db.goals.createIndex({ userId: 1 })
+
+exit
+```
+
+### Option 2: MongoDB Atlas (Cloud)
+
+1. Go to [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)
+2. Create a free account and cluster
+3. Click "Connect" → "Connect your application"
+4. Copy the connection string
+5. Update `.env`:
+
+```env
+MONGODB_URI=mongodb+srv://<username>:<password>@cluster.mongodb.net/finhealth?retryWrites=true&w=majority
+```
+
+Replace `<username>` and `<password>` with your credentials.
+
+---
+
+## 💻 Frontend Setup
+
+### Step 1: Create React App
+
+```bash
+cd ..  # Go back to project root
+npx create-react-app frontend
+cd frontend
+```
+
+### Step 2: Install Required Packages
+
+```bash
+npm install axios recharts lucide-react
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+```
+
+### Step 3: Configure Tailwind CSS
+
+Edit `tailwind.config.js`:
+
+```javascript
+module.exports = {
+  content: [
+    "./src/**/*.{js,jsx,ts,tsx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+```
+
+Edit `src/index.css`:
+
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+```
+
+### Step 4: Replace App.js
+
+Replace the content of `src/App.js` with the React component from the artifact (the Financial Health Management System).
+
+### Step 5: Update App.js for API Integration
+
+Add this API service at the top of your App.js:
+
+```javascript
+// API Configuration
+const API_URL = 'http://localhost:5000/api';
+
+const api = {
+  // Auth
+  register: (data) => fetch(`${API_URL}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).then(r => r.json()),
+  
+  login: (data) => fetch(`${API_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).then(r => r.json()),
+
+  // Expenses
+  getExpenses: (token) => fetch(`${API_URL}/expenses`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  }).then(r => r.json()),
+  
+  addExpense: (token, data) => fetch(`${API_URL}/expenses`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify(data)
+  }).then(r => r.json()),
+
+  // Similar methods for income, budgets, goals...
+};
+```
+
+### Step 6: Create Proxy (Optional)
+
+Add to `package.json`:
+
+```json
+{
+  "proxy": "http://localhost:5000"
+}
+```
+
+---
+
+## ▶️ Running the Application
+
+### Start Backend Server
+
+```bash
+cd backend
+npm run dev
+```
+
+You should see:
+```
+Server running on port 5000
+MongoDB Connected
+```
+
+### Start Frontend Development Server
+
+Open a new terminal:
+
+```bash
+cd frontend
+npm start
+```
+
+The app will open at `http://localhost:3000`
+
+---
+
+## 📚 API Documentation
+
+### Authentication Endpoints
+
+#### Register User
+```http
+POST /api/auth/register
+Content-Type: application/json
+
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "password": "securepassword"
+}
+
+Response:
+{
+  "token": "jwt-token-here",
+  "user": {
+    "id": "user-id",
+    "name": "John Doe",
+    "email": "john@example.com",
+    "currency": "USD"
+  }
+}
+```
+
+#### Login
+```http
+POST /api/auth/login
+Content-Type: application/json
+
+{
+  "email": "john@example.com",
+  "password": "securepassword"
+}
+```
+
+### Expense Endpoints
+
+#### Get All Expenses
+```http
+GET /api/expenses
+Authorization: Bearer {token}
+```
+
+#### Create Expense
+```http
+POST /api/expenses
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "category": "Food",
+  "amount": 45.50,
+  "date": "2025-10-21",
+  "description": "Grocery shopping"
+}
+```
+
+#### Update Expense
+```http
+PUT /api/expenses/{id}
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "amount": 50.00
+}
+```
+
+#### Delete Expense
+```http
+DELETE /api/expenses/{id}
+Authorization: Bearer {token}
+```
+
+### Budget Endpoints
+
+#### Get All Budgets
+```http
+GET /api/budgets
+Authorization: Bearer {token}
+```
+
+#### Create Budget
+```http
+POST /api/budgets
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "category": "Food",
+  "limit": 600,
+  "period": "monthly"
+}
+```
+
+### Goal Endpoints
+
+#### Get All Goals
+```http
+GET /api/goals
+Authorization: Bearer {token}
+```
+
+#### Create Goal
+```http
+POST /api/goals
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "name": "Emergency Fund",
+  "target": 10000,
+  "current": 5000,
+  "deadline": "2025-12-31"
+}
+```
+
+### Analytics Endpoint
+
+#### Get Financial Summary
+```http
+GET /api/analytics/summary
+Authorization: Bearer {token}
+
+Response:
+{
+  "totalExpenses": 1500,
+  "totalIncome": 5000,
+  "netSavings": 3500,
+  "expensesByCategory": {
+    "Food": 600,
+    "Transport": 200,
+    "Entertainment": 100
+  }
+}
+```
+
+---
+
+## 🧪 Testing
+
+### Test Backend API with cURL
+
+```bash
+# Register a user
+curl -X POST http://localhost:5000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Test User","email":"test@test.com","password":"test123"}'
+
+# Login
+curl -X POST http://localhost:5000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@test.com","password":"test123"}'
+
+# Get expenses (replace TOKEN with your JWT)
+curl -X GET http://localhost:5000/api/expenses \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+```
+
+### Test with Postman
+
+1. Download [Postman](https://www.postman.com/downloads/)
+2. Import the API collection (create a new collection)
+3. Set environment variable for `token`
+4. Test all endpoints
+
+---
+
+## 🔒 Security Considerations
+
+1. **Never commit `.env` file** - Add to `.gitignore`
+2. **Use strong JWT secrets** in production
+3. **Enable HTTPS** in production
+4. **Implement rate limiting** on auth endpoints
+5. **Validate all inputs** on backen
