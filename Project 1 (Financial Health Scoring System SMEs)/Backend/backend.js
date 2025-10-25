@@ -1,5 +1,6 @@
-// backend.js - Server WITHOUT Database (In-Memory Storage)
+// backend.js - Complete Backend with MongoDB Authentication
 const express = require('express');
+const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -11,22 +12,72 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-console.log('✅ Server starting WITHOUT database (using in-memory storage)...');
+// MongoDB Connection
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log('✅ MongoDB Connected Successfully'))
+  .catch(err => console.error('❌ MongoDB connection error:', err));
 
-// ==================== IN-MEMORY DATA STORAGE ====================
+// ==================== MODELS ====================
 
-let users = [];
-let expenses = [];
-let income = [];
-let budgets = [];
-let goals = [];
+// User Model
+const userSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  currency: { type: String, default: 'USD' },
+  createdAt: { type: Date, default: Date.now }
+});
 
-// Counter for IDs
-let userIdCounter = 1;
-let expenseIdCounter = 1;
-let incomeIdCounter = 1;
-let budgetIdCounter = 1;
-let goalIdCounter = 1;
+const User = mongoose.model('User', userSchema);
+
+// Expense Model
+const expenseSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  category: { type: String, required: true },
+  amount: { type: Number, required: true },
+  date: { type: Date, required: true },
+  description: { type: String, required: true },
+  paymentMethod: { type: String, default: 'Cash' },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const Expense = mongoose.model('Expense', expenseSchema);
+
+// Income Model
+const incomeSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  source: { type: String, required: true },
+  amount: { type: Number, required: true },
+  date: { type: Date, required: true },
+  description: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const Income = mongoose.model('Income', incomeSchema);
+
+// Budget Model
+const budgetSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  category: { type: String, required: true },
+  limit: { type: Number, required: true },
+  period: { type: String, enum: ['monthly', 'weekly', 'yearly'], default: 'monthly' },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const Budget = mongoose.model('Budget', budgetSchema);
+
+// Goal Model
+const goalSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  name: { type: String, required: true },
+  target: { type: Number, required: true },
+  current: { type: Number, default: 0 },
+  deadline: { type: Date, required: true },
+  category: { type: String, default: 'Savings' },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const Goal = mongoose.model('Goal', goalSchema);
 
 // ==================== MIDDLEWARE ====================
 
@@ -41,100 +92,130 @@ const authenticateToken = (req, res, next) => {
 
   jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
     if (err) {
-      return res.status(403).json({ error: 'Invalid token' });
+      return res.status(403).json({ error: 'Invalid or expired token' });
     }
     req.userId = user.id;
     next();
   });
 };
 
-// ==================== ROUTES ====================
+// ==================== AUTH ROUTES ====================
 
-// Auth Routes
+// Register
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
+    // Validation
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
     // Check if user exists
-    const existingUser = users.find(u => u.email === email);
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
-      return res.status(400).json({ error: 'User already exists' });
+      return res.status(400).json({ error: 'User already exists with this email' });
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create user
-    const user = {
-      id: userIdCounter++,
+    const user = new User({
       name,
-      email,
-      password: hashedPassword,
-      currency: 'USD',
-      createdAt: new Date()
-    };
+      email: email.toLowerCase(),
+      password: hashedPassword
+    });
 
-    users.push(user);
+    await user.save();
 
     // Generate token
-    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET || 'your-secret-key', {
-      expiresIn: '7d'
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'your-secret-key', {
+      expiresIn: '30d'
     });
 
     res.status(201).json({
+      message: 'Registration successful',
       token,
       user: {
-        id: user.id,
+        id: user._id,
         name: user.name,
         email: user.email,
         currency: user.currency
       }
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Registration error:', error);
+    res.status(500).json({ error: 'Server error during registration' });
   }
 });
 
+// Login
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // Validation
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
     // Find user
-    const user = users.find(u => u.email === email);
+    const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
-      return res.status(400).json({ error: 'Invalid credentials' });
+      return res.status(400).json({ error: 'Invalid email or password' });
     }
 
     // Check password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(400).json({ error: 'Invalid credentials' });
+      return res.status(400).json({ error: 'Invalid email or password' });
     }
 
     // Generate token
-    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET || 'your-secret-key', {
-      expiresIn: '7d'
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'your-secret-key', {
+      expiresIn: '30d'
     });
 
     res.json({
+      message: 'Login successful',
       token,
       user: {
-        id: user.id,
+        id: user._id,
         name: user.name,
         email: user.email,
         currency: user.currency
       }
     });
   } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Server error during login' });
+  }
+});
+
+// Get User Profile
+app.get('/api/auth/profile', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).select('-password');
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Expense Routes
+// ==================== EXPENSE ROUTES ====================
+
 app.get('/api/expenses', authenticateToken, async (req, res) => {
   try {
-    const userExpenses = expenses.filter(e => e.userId === req.userId);
-    res.json(userExpenses);
+    const expenses = await Expense.find({ userId: req.userId }).sort({ date: -1 });
+    res.json(expenses);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -142,13 +223,11 @@ app.get('/api/expenses', authenticateToken, async (req, res) => {
 
 app.post('/api/expenses', authenticateToken, async (req, res) => {
   try {
-    const expense = {
-      id: expenseIdCounter++,
+    const expense = new Expense({
       userId: req.userId,
-      ...req.body,
-      createdAt: new Date()
-    };
-    expenses.push(expense);
+      ...req.body
+    });
+    await expense.save();
     res.status(201).json(expense);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -157,12 +236,15 @@ app.post('/api/expenses', authenticateToken, async (req, res) => {
 
 app.put('/api/expenses/:id', authenticateToken, async (req, res) => {
   try {
-    const expenseIndex = expenses.findIndex(e => e.id === parseInt(req.params.id) && e.userId === req.userId);
-    if (expenseIndex === -1) {
+    const expense = await Expense.findOneAndUpdate(
+      { _id: req.params.id, userId: req.userId },
+      req.body,
+      { new: true }
+    );
+    if (!expense) {
       return res.status(404).json({ error: 'Expense not found' });
     }
-    expenses[expenseIndex] = { ...expenses[expenseIndex], ...req.body };
-    res.json(expenses[expenseIndex]);
+    res.json(expense);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -170,22 +252,25 @@ app.put('/api/expenses/:id', authenticateToken, async (req, res) => {
 
 app.delete('/api/expenses/:id', authenticateToken, async (req, res) => {
   try {
-    const expenseIndex = expenses.findIndex(e => e.id === parseInt(req.params.id) && e.userId === req.userId);
-    if (expenseIndex === -1) {
+    const expense = await Expense.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.userId
+    });
+    if (!expense) {
       return res.status(404).json({ error: 'Expense not found' });
     }
-    expenses.splice(expenseIndex, 1);
     res.json({ message: 'Expense deleted' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Income Routes
+// ==================== INCOME ROUTES ====================
+
 app.get('/api/income', authenticateToken, async (req, res) => {
   try {
-    const userIncome = income.filter(i => i.userId === req.userId);
-    res.json(userIncome);
+    const income = await Income.find({ userId: req.userId }).sort({ date: -1 });
+    res.json(income);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -193,14 +278,12 @@ app.get('/api/income', authenticateToken, async (req, res) => {
 
 app.post('/api/income', authenticateToken, async (req, res) => {
   try {
-    const incomeItem = {
-      id: incomeIdCounter++,
+    const income = new Income({
       userId: req.userId,
-      ...req.body,
-      createdAt: new Date()
-    };
-    income.push(incomeItem);
-    res.status(201).json(incomeItem);
+      ...req.body
+    });
+    await income.save();
+    res.status(201).json(income);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -208,32 +291,39 @@ app.post('/api/income', authenticateToken, async (req, res) => {
 
 app.delete('/api/income/:id', authenticateToken, async (req, res) => {
   try {
-    const incomeIndex = income.findIndex(i => i.id === parseInt(req.params.id) && i.userId === req.userId);
-    if (incomeIndex === -1) {
+    const income = await Income.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.userId
+    });
+    if (!income) {
       return res.status(404).json({ error: 'Income not found' });
     }
-    income.splice(incomeIndex, 1);
     res.json({ message: 'Income deleted' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Budget Routes
+// ==================== BUDGET ROUTES ====================
+
 app.get('/api/budgets', authenticateToken, async (req, res) => {
   try {
-    const userBudgets = budgets.filter(b => b.userId === req.userId);
+    const budgets = await Budget.find({ userId: req.userId });
     
-    // Calculate spent amount for each budget
-    const budgetsWithSpent = userBudgets.map(budget => {
-      const categoryExpenses = expenses.filter(e => 
-        e.userId === req.userId && 
-        e.category === budget.category &&
-        new Date(e.date) >= new Date(new Date().setDate(1))
-      );
-      const spent = categoryExpenses.reduce((sum, exp) => sum + exp.amount, 0);
-      return { ...budget, spent };
-    });
+    const budgetsWithSpent = await Promise.all(
+      budgets.map(async (budget) => {
+        const expenses = await Expense.find({
+          userId: req.userId,
+          category: budget.category,
+          date: { $gte: new Date(new Date().setDate(1)) }
+        });
+        const spent = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+        return {
+          ...budget.toObject(),
+          spent
+        };
+      })
+    );
     
     res.json(budgetsWithSpent);
   } catch (error) {
@@ -243,27 +333,12 @@ app.get('/api/budgets', authenticateToken, async (req, res) => {
 
 app.post('/api/budgets', authenticateToken, async (req, res) => {
   try {
-    const budget = {
-      id: budgetIdCounter++,
+    const budget = new Budget({
       userId: req.userId,
-      ...req.body,
-      createdAt: new Date()
-    };
-    budgets.push(budget);
+      ...req.body
+    });
+    await budget.save();
     res.status(201).json(budget);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.put('/api/budgets/:id', authenticateToken, async (req, res) => {
-  try {
-    const budgetIndex = budgets.findIndex(b => b.id === parseInt(req.params.id) && b.userId === req.userId);
-    if (budgetIndex === -1) {
-      return res.status(404).json({ error: 'Budget not found' });
-    }
-    budgets[budgetIndex] = { ...budgets[budgetIndex], ...req.body };
-    res.json(budgets[budgetIndex]);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -271,22 +346,25 @@ app.put('/api/budgets/:id', authenticateToken, async (req, res) => {
 
 app.delete('/api/budgets/:id', authenticateToken, async (req, res) => {
   try {
-    const budgetIndex = budgets.findIndex(b => b.id === parseInt(req.params.id) && b.userId === req.userId);
-    if (budgetIndex === -1) {
+    const budget = await Budget.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.userId
+    });
+    if (!budget) {
       return res.status(404).json({ error: 'Budget not found' });
     }
-    budgets.splice(budgetIndex, 1);
     res.json({ message: 'Budget deleted' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Goal Routes
+// ==================== GOAL ROUTES ====================
+
 app.get('/api/goals', authenticateToken, async (req, res) => {
   try {
-    const userGoals = goals.filter(g => g.userId === req.userId);
-    res.json(userGoals);
+    const goals = await Goal.find({ userId: req.userId }).sort({ deadline: 1 });
+    res.json(goals);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -294,13 +372,11 @@ app.get('/api/goals', authenticateToken, async (req, res) => {
 
 app.post('/api/goals', authenticateToken, async (req, res) => {
   try {
-    const goal = {
-      id: goalIdCounter++,
+    const goal = new Goal({
       userId: req.userId,
-      ...req.body,
-      createdAt: new Date()
-    };
-    goals.push(goal);
+      ...req.body
+    });
+    await goal.save();
     res.status(201).json(goal);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -309,12 +385,15 @@ app.post('/api/goals', authenticateToken, async (req, res) => {
 
 app.put('/api/goals/:id', authenticateToken, async (req, res) => {
   try {
-    const goalIndex = goals.findIndex(g => g.id === parseInt(req.params.id) && g.userId === req.userId);
-    if (goalIndex === -1) {
+    const goal = await Goal.findOneAndUpdate(
+      { _id: req.params.id, userId: req.userId },
+      req.body,
+      { new: true }
+    );
+    if (!goal) {
       return res.status(404).json({ error: 'Goal not found' });
     }
-    goals[goalIndex] = { ...goals[goalIndex], ...req.body };
-    res.json(goals[goalIndex]);
+    res.json(goal);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -322,37 +401,39 @@ app.put('/api/goals/:id', authenticateToken, async (req, res) => {
 
 app.delete('/api/goals/:id', authenticateToken, async (req, res) => {
   try {
-    const goalIndex = goals.findIndex(g => g.id === parseInt(req.params.id) && g.userId === req.userId);
-    if (goalIndex === -1) {
+    const goal = await Goal.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.userId
+    });
+    if (!goal) {
       return res.status(404).json({ error: 'Goal not found' });
     }
-    goals.splice(goalIndex, 1);
     res.json({ message: 'Goal deleted' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Analytics Routes
+// ==================== ANALYTICS ROUTES ====================
+
 app.get('/api/analytics/summary', authenticateToken, async (req, res) => {
   try {
     const startOfMonth = new Date(new Date().setDate(1));
     
-    const userExpenses = expenses.filter(e => 
-      e.userId === req.userId && 
-      new Date(e.date) >= startOfMonth
-    );
+    const expenses = await Expense.find({
+      userId: req.userId,
+      date: { $gte: startOfMonth }
+    });
     
-    const userIncome = income.filter(i => 
-      i.userId === req.userId && 
-      new Date(i.date) >= startOfMonth
-    );
+    const income = await Income.find({
+      userId: req.userId,
+      date: { $gte: startOfMonth }
+    });
     
-    const totalExpenses = userExpenses.reduce((sum, exp) => sum + exp.amount, 0);
-    const totalIncome = userIncome.reduce((sum, inc) => sum + inc.amount, 0);
+    const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+    const totalIncome = income.reduce((sum, inc) => sum + inc.amount, 0);
     
-    // Group expenses by category
-    const expensesByCategory = userExpenses.reduce((acc, exp) => {
+    const expensesByCategory = expenses.reduce((acc, exp) => {
       acc[exp.category] = (acc[exp.category] || 0) + exp.amount;
       return acc;
     }, {});
@@ -373,14 +454,7 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
-    message: 'Server running without database (in-memory storage)',
-    dataCount: {
-      users: users.length,
-      expenses: expenses.length,
-      income: income.length,
-      budgets: budgets.length,
-      goals: goals.length
-    }
+    database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
   });
 });
 
@@ -388,7 +462,6 @@ app.get('/api/health', (req, res) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
-  console.log(`📝 Using IN-MEMORY storage (data will be lost on restart)`);
   console.log(`🌐 API available at: http://localhost:${PORT}/api`);
-  console.log(`💚 Health check: http://localhost:${PORT}/api/health`);
+  console.log(`💾 Database: ${mongoose.connection.readyState === 1 ? 'Connected' : 'Connecting...'}`);
 });

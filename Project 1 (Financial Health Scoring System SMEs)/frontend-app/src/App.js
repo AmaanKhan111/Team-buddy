@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { DollarSign, TrendingUp, TrendingDown, Target, Wallet, PiggyBank, AlertCircle, Plus, Edit2, Trash2, Calendar, Filter, Download, Upload, CreditCard, Receipt, Settings, User, LogOut, Menu, X } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, Target, Wallet, PiggyBank, AlertCircle, Plus, Edit2, Trash2, Calendar, Filter, Download, Upload, CreditCard, Receipt, Settings, User, LogOut, Menu, X, MessageCircle, Send, Bot, Minimize2 } from 'lucide-react';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -34,6 +34,12 @@ function App() {
   const [filterCategory, setFilterCategory] = useState('all');
   const [dateRange, setDateRange] = useState('month');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState([
+    { id: 1, sender: 'bot', text: 'Hi Mr. Tasmir Khan! 👋 I\'m your personal finance assistant. How can I help you today?', timestamp: new Date() }
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
 
   const totalIncome = income.reduce((sum, item) => sum + item.amount, 0);
   const totalExpenses = expenses.reduce((sum, item) => sum + item.amount, 0);
@@ -64,6 +70,107 @@ function App() {
       .reduce((sum, e) => sum + e.amount, 0);
     return { ...budget, spent };
   });
+
+  // AI Chatbot Logic
+  const handleChatSubmit = (e) => {
+    e.preventDefault();
+    if (!chatInput.trim()) return;
+
+    const userMessage = {
+      id: Date.now(),
+      sender: 'user',
+      text: chatInput,
+      timestamp: new Date()
+    };
+
+    setChatMessages([...chatMessages, userMessage]);
+    setChatInput('');
+    setIsTyping(true);
+
+    setTimeout(() => {
+      const botResponse = generateBotResponse(chatInput.toLowerCase());
+      setChatMessages(prev => [...prev, {
+        id: Date.now(),
+        sender: 'bot',
+        text: botResponse,
+        timestamp: new Date()
+      }]);
+      setIsTyping(false);
+    }, 1000);
+  };
+
+  const generateBotResponse = (input) => {
+    // Financial insights based on user data
+    const insights = {
+      totalIncome,
+      totalExpenses,
+      netSavings,
+      savingsRate,
+      topCategory: Object.entries(expenseByCategory).sort((a, b) => b[1] - a[1])[0],
+      budgetAlerts: budgetsWithSpent.filter(b => (b.spent / b.limit) > 1).length,
+      goalsProgress: goals.map(g => ({ name: g.name, progress: ((g.current / g.target) * 100).toFixed(0) }))
+    };
+
+    // AI Response Logic
+    if (input.includes('income') || input.includes('earning')) {
+      return `Your total income this month is ${insights.totalIncome.toFixed(2)}. You have ${income.length} income sources. Your main source is ${income.sort((a, b) => b.amount - a.amount)[0].source} with ${income[0].amount.toFixed(2)}. 💰`;
+    }
+    
+    if (input.includes('expense') || input.includes('spending') || input.includes('spent')) {
+      return `You've spent ${insights.totalExpenses.toFixed(2)} this month. Your highest spending category is ${insights.topCategory[0]} at ${insights.topCategory[1].toFixed(2)}. ${insights.budgetAlerts > 0 ? `⚠️ Warning: You're over budget in ${insights.budgetAlerts} categories!` : '✅ You\'re within budget in all categories!'}`;
+    }
+    
+    if (input.includes('saving') || input.includes('save')) {
+      return `Great question! Your net savings this month is ${insights.netSavings.toFixed(2)}, which is a ${insights.savingsRate}% savings rate. ${insights.savingsRate > 20 ? '🎉 Excellent job! You\'re saving well!' : insights.savingsRate > 10 ? '👍 Good savings rate, keep it up!' : '💡 Try to increase your savings rate to at least 20%.'} `;
+    }
+    
+    if (input.includes('budget')) {
+      const overBudget = budgetsWithSpent.filter(b => (b.spent / b.limit) > 1);
+      if (overBudget.length > 0) {
+        return `You're currently over budget in ${overBudget.length} categories: ${overBudget.map(b => `${b.category} (${((b.spent / b.limit) * 100).toFixed(0)}%)`).join(', ')}. Consider reducing spending in these areas. 📊`;
+      }
+      return `Good news! You're within budget in all categories. Keep up the good financial discipline! ✅`;
+    }
+    
+    if (input.includes('goal') || input.includes('target')) {
+      const goalsSummary = insights.goalsProgress.map(g => `${g.name}: ${g.progress}%`).join(', ');
+      return `You have ${goals.length} active financial goals: ${goalsSummary}. ${goals.some(g => (g.current / g.target) > 0.8) ? '🎯 You\'re very close to achieving some goals!' : '💪 Keep contributing regularly to reach your targets!'}`;
+    }
+    
+    if (input.includes('advice') || input.includes('tip') || input.includes('suggest')) {
+      const tips = [
+        `💡 Your highest expense is ${insights.topCategory[0]}. Try reducing it by 10% to save an extra ${(insights.topCategory[1] * 0.1).toFixed(2)} this month!`,
+        `🎯 You could reach your goals faster by increasing your savings rate to 25%. This would give you an extra ${((totalIncome * 0.25) - netSavings).toFixed(2)} per month.`,
+        `📊 Consider setting up automatic transfers to your savings account right after receiving income.`,
+        `💳 Track your daily expenses to identify unnecessary spending. Small savings add up!`,
+        `🏆 Challenge yourself to a "no-spend day" once a week to boost your savings.`
+      ];
+      return tips[Math.floor(Math.random() * tips.length)];
+    }
+    
+    if (input.includes('hello') || input.includes('hi') || input.includes('hey')) {
+      return `Hello Mr. Tasmir Khan! 👋 How can I help you manage your finances today? You can ask me about your income, expenses, savings, budgets, or goals!`;
+    }
+    
+    if (input.includes('help') || input.includes('what can you do')) {
+      return `I can help you with:\n\n💰 Income analysis\n📊 Expense tracking\n💵 Savings insights\n🎯 Goal progress\n📈 Budget monitoring\n💡 Financial advice\n\nJust ask me anything about your finances!`;
+    }
+    
+    if (input.includes('report') || input.includes('summary')) {
+      return `📊 Financial Summary:\n\n💰 Income: ${insights.totalIncome.toFixed(2)}\n📉 Expenses: ${insights.totalExpenses.toFixed(2)}\n💵 Net Savings: ${insights.netSavings.toFixed(2)}\n📈 Savings Rate: ${insights.savingsRate}%\n🎯 Active Goals: ${goals.length}\n\n${insights.budgetAlerts > 0 ? '⚠️ ' + insights.budgetAlerts + ' budget alerts!' : '✅ All budgets on track!'}`;
+    }
+
+    // Default response
+    return `I understand you're asking about "${input}". I can help you with income, expenses, savings, budgets, and financial goals. Try asking specific questions like "How much did I spend?" or "What's my savings rate?" 💬`;
+  };
+
+  const quickQuestions = [
+    "How much did I spend this month?",
+    "What's my savings rate?",
+    "Show my budget status",
+    "How are my goals doing?",
+    "Give me financial advice"
+  ];
 
   const ExpenseForm = ({ expense, onClose }) => {
     const [formData, setFormData] = useState(expense || {
@@ -773,6 +880,102 @@ function App() {
         {activeTab === 'reports' && <ReportsView />}
       </div>
 
+      {/* AI Chatbot */}
+      <div className="fixed bottom-6 right-6 z-50">
+        {!chatOpen ? (
+          <button
+            onClick={() => setChatOpen(true)}
+            className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-4 rounded-full shadow-lg hover:shadow-xl transition-all transform hover:scale-110"
+          >
+            <MessageCircle size={28} />
+          </button>
+        ) : (
+          <div className="bg-white rounded-2xl shadow-2xl w-96 h-[600px] flex flex-col">
+            {/* Chat Header */}
+            <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-4 rounded-t-2xl flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="bg-white bg-opacity-20 p-2 rounded-full">
+                  <Bot size={24} />
+                </div>
+                <div>
+                  <h3 className="font-bold">FinHealth AI Assistant</h3>
+                  <p className="text-xs opacity-90">Always here to help</p>
+                </div>
+              </div>
+              <button onClick={() => setChatOpen(false)} className="hover:bg-white hover:bg-opacity-20 p-2 rounded-lg transition">
+                <Minimize2 size={20} />
+              </button>
+            </div>
+
+            {/* Chat Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {chatMessages.map((msg) => (
+                <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[80%] ${msg.sender === 'user' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-800'} rounded-2xl px-4 py-2`}>
+                    <p className="text-sm whitespace-pre-line">{msg.text}</p>
+                    <p className={`text-xs mt-1 ${msg.sender === 'user' ? 'text-purple-200' : 'text-gray-500'}`}>
+                      {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+              {isTyping && (
+                <div className="flex justify-start">
+                  <div className="bg-gray-100 rounded-2xl px-4 py-2">
+                    <div className="flex gap-1">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Quick Questions */}
+            <div className="px-4 py-2 border-t border-gray-200">
+              <p className="text-xs text-gray-500 mb-2">Quick questions:</p>
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                {quickQuestions.map((q, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setChatInput(q);
+                      setTimeout(() => {
+                        const fakeEvent = { preventDefault: () => {}, target: { value: q } };
+                        handleChatSubmit(fakeEvent);
+                      }, 100);
+                    }}
+                    className="text-xs bg-purple-100 text-purple-600 px-3 py-1 rounded-full whitespace-nowrap hover:bg-purple-200 transition"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Chat Input */}
+            <form onSubmit={handleChatSubmit} className="p-4 border-t border-gray-200">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder="Ask about your finances..."
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-600"
+                />
+                <button
+                  type="submit"
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-2 rounded-full hover:shadow-lg transition"
+                >
+                  <Send size={20} />
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+      </div>
+
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
@@ -789,4 +992,4 @@ function App() {
   );
 }
 
-export default App;     
+export default App;
